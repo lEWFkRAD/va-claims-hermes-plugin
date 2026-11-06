@@ -2,7 +2,7 @@
 // Plain ESM, loaded uncompiled: no JSX, only @hermes/plugin-sdk + react imports.
 // Backed by the plugin's Python API at /api/plugins/va-claims/ via ctx.rest.
 
-import { host, Button, Input, Badge, StatusDot, EmptyState, Codicon, Tabs, TabsList, TabsTrigger, TabsContent } from '@hermes/plugin-sdk'
+import { host, Button, Input, Badge, StatusDot, EmptyState, Codicon } from '@hermes/plugin-sdk'
 import { useEffect, useState } from 'react'
 import { jsx as rawJsx, jsxs as rawJsxs } from 'react/jsx-runtime'
 
@@ -238,18 +238,17 @@ function BenefitsPage() {
       jsx(Input, { placeholder: 'ICN (blank = default)', value: icn, onValueChange: setIcn, className: 'h-8 w-56' }),
       jsx(Button, { size: 'sm', variant: 'ghost', onClick: () => summary.reload(), children: 'Refresh' }),
     ] }),
-    jsx(Tabs, {
-      value: tab,
-      onValueChange: setTab,
-      className: 'flex min-h-0 flex-1 flex-col',
-      children: jsxs('div', { className: 'flex min-h-0 flex-1 flex-col gap-3', children: [
-        jsx(TabsList, { children: jsxs('div', { className: 'flex gap-1', children: [
-          jsx(TabsTrigger, { value: 'overview', children: 'Overview' }),
-          jsx(TabsTrigger, { value: 'guide', children: 'Guide' }),
-        ] }) }),
-        jsx(TabsContent, { value: 'overview', className: 'min-h-0 flex-1 overflow-auto', children: jsx(OverviewTab, { icn, summary, reload: summary.reload }) }),
-        jsx(TabsContent, { value: 'guide', className: 'min-h-0 flex-1 overflow-auto', children: jsx(GuideTab, {}) }),
-      ] }),
+    jsxs('div', {
+      className: 'flex min-h-0 flex-1 flex-col gap-3',
+      children: [
+        jsxs('div', { className: 'flex gap-1', children: [
+          jsx('button', { type: 'button', onClick: () => setTab('overview'), className: `rounded px-2 py-1 text-xs ${tab === 'overview' ? 'bg-(--chrome-action-hover) text-foreground' : 'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover)'}`, children: 'Overview' }),
+          jsx('button', { type: 'button', onClick: () => setTab('guide'), className: `rounded px-2 py-1 text-xs ${tab === 'guide' ? 'bg-(--chrome-action-hover) text-foreground' : 'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover)'}`, children: 'Guide' }),
+        ] }),
+        tab === 'overview'
+          ? jsx(OverviewTab, { icn, summary, reload: summary.reload })
+          : jsx(GuideTab, {}),
+      ],
     }),
   ] })
 }
