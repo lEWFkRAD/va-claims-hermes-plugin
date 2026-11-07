@@ -69,6 +69,86 @@ def _env_or_cfg(ctx, key: str, env: str) -> str | None:
     return val.strip() if val and val.strip() else None
 
 
+# ---------------------------------------------------------------- HTTP + token
+
+def _http(url: str, headers: dict[str, str] | None = None, method: str = "GET", body: bytes | None = None) -> dict[str, Any]:
+    """One HTTP call; never raises. Returns {ok, status, body} with body parsed as JSON when possible."""
+    req = Request(url, data=body, method=method)
+    req.add_header("Accept", "application/json")
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
+    try:
+        with urlopen(req, timeout=TIMEOUT) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+    except HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            return {"ok": False, "status": exc.code, "body": json.loads(raw)}
+        except Exception:
+            return {"ok": False, "status": exc.code, "body": raw}
+    except (URLError, OSError, TimeoutError) as exc:
+        return {"ok": False, "status": 0, "body": f"network error: {exc}"}
+    try:
+        return {"ok": True, "status": 200, "body": json.loads(raw)}
+    except Exception:
+        return {"ok": True, "status": 200, "body": raw}
+
+
+def _ccg_token(ctx, environment: str) -> tuple[str | None, str | None]:
+    """Client-credentials JWT-bearer token for the Benefits Claims API.
+
+    POST {base}/oauth2/claims/system/v1/token with a signed client_assertion
+    (RS256, aud = the Okta URL in TOKEN_AUD). 5-minute expiry, cached
+    in-process. Needs PyJWT[crypto]. Returns (token, error)."""
+    now = time.time()
+    cached = _token_cache
+    if cached["token"] and cached["env"] == environment and cached["expires_at"] > now + 30:
+        return cached["token"], None
+
+    client_id = _env_or_cfg(ctx, "client_id", "VA_CLAIMS_CLIENT_ID")
+    key_path = _env_or_cfg(ctx, "private_key_path", "VA_CLAIMS_PRIVATE_KEY")
+    if not client_id or not key_path:
+        return None, (
+            "Benefits Claims API credentials not configured. Set plugin settings "
+            "client_id and private_key_path (or VA_CLAIMS_CLIENT_ID / "
+            "VA_CLAIMS_PRIVATE_KEY): an RSA keypair whose public half is "
+            "registered as a JWK in your VA Lighthouse sandbox access request."
+        )
+    try:
+        import jwt  # PyJWT[crypto]
+    except ImportError:
+        return None, "PyJWT[crypto] is not installed in this environment (pip install 'PyJWT[crypto]')."
+
+    try:
+        pem = Path(key_path).expanduser().read_text()
+    except OSError as exc:
+        return None, f"cannot read private key at {key_path}: {exc}"
+
+    base = SANDBOX_BASE if environment == "sandbox" else PROD_BASE
+    aud = TOKEN_AUD[environment]
+    assertion = jwt.encode(
+        {
+            "iss": client_id,
+            "sub": client_id,
+            "aud": aud,
+            "jti": uuid.uuid4().hex,
+            "exp": int(now) + 300,
+        },
+        pem,
+        algorithm="RS256",
+    )
+    form = urlencode(
+        {"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion}
+    ).encode()
+    resp = _http(f"{base}/oauth2/claims/system/v1/token", headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST", body=form)
+    if not resp["ok"]:
+        return None, f"token request failed (HTTP {resp['status']}): {str(resp['body'])[:300]}"
+    token = resp["body"].get("access_token") if isinstance(resp["body"], dict) else None
+    if not token:
+        return None, f"token response carried no access_token: {str(resp['body'])[:200]}"
+    _token_cache.update({"token": token, "expires_at": now + float(resp["body"].get("expires_in", 1800)), "env": environment})
+    return token, None
+
 # ---------------------------------------------------------------- tools
 
 def va_claim_status(ctx, args: dict[str, Any]) -> str:

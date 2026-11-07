@@ -75,3 +75,19 @@ store.py               local per-veteran benefits file
 dashboard/plugin_api.py  FastAPI routes for the desktop page
 desktop/plugin.js      Hermes Desktop page (routes + sidebar nav + chip)
 ```
+
+## Running as a standalone MCP server
+
+`mcp_server.py` exposes the same seven tools over MCP (stdio) for any MCP
+client (Claude Desktop, Codex, other agents), no Hermes required. Handlers,
+schemas and the local store are the plugin's own code; only the transport
+differs. Needs Python 3.10+ and `mcp>=2`.
+
+```json
+{"mcpServers": {"va-claims": {"command": "python3", "args": ["/path/to/mcp_server.py"]}}}
+```
+
+Configuration via environment: `VA_CLAIMS_ICN`, `VA_CLAIMS_ENV`
+(sandbox/production), `VA_REFERENCE_API_KEY`, `VA_CLAIMS_CLIENT_ID`,
+`VA_CLAIMS_PRIVATE_KEY`. Tracker data lives under `$HERMES_HOME/plugins-data/
+va-claims/` (default `~/.hermes`).
